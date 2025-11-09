@@ -56,7 +56,7 @@ Title.Position = UDim2.new(0, 20, 0, 6)
 Title.Size = UDim2.new(0, 300, 1, 0)
 Title.Parent = TopBar
 
---// Tab Bar (new)
+--// Tab Bar
 local TabBar = Instance.new("Frame")
 TabBar.Size = UDim2.new(1, -30, 0, 36)
 TabBar.Position = UDim2.new(0, 15, 0, 50)
@@ -118,7 +118,7 @@ UIStroke.Color = Color3.fromRGB(255, 0, 0)
 UIStroke.Thickness = 1.5
 UIStroke.Transparency = 0.2
 
---// Steal Tab Content (new)
+--// Steal Tab Content
 local StealFrame = Instance.new("Frame")
 StealFrame.Size = UDim2.new(1, 0, 1, 0)
 StealFrame.BackgroundTransparency = 1
@@ -150,12 +150,12 @@ local TeleportBaseBtn = makeStealBtn("Teleport To Base", 70)
 local FindBrainrotsBtn = makeStealBtn("Find Brainrots", 130)
 local AutoStealBtn = makeStealBtn("Auto-Steal Nearest Brainrot: OFF", 190)
 
---// Variables (original)
+--// Variables
 local currentHotkey = nil
 local selectingKey = false
 local toggling = false
 
---// Steal-tab variables & helpers
+-- Steal-tab variables & helpers
 local desyncEnabled = false
 local desyncConnection = nil
 
@@ -167,7 +167,7 @@ local function Tween(object, props, time, style)
 	TweenService:Create(object, TweenInfo.new(time or 0.4, style or Enum.EasingStyle.Quint, Enum.EasingDirection.Out), props):Play()
 end
 
---// Hover Animation (original)
+-- Hover Animation (original)
 HotkeyButton.MouseEnter:Connect(function()
 	Tween(HotkeyButton, {BackgroundColor3 = Color3.fromRGB(180, 0, 0)}, 0.3)
 	UIStroke.Thickness = 2.5
@@ -180,7 +180,7 @@ HotkeyButton.MouseLeave:Connect(function()
 	end
 end)
 
---// Hotkey Selection (original)
+-- Hotkey Selection (original)
 HotkeyButton.MouseButton1Click:Connect(function()
 	if selectingKey then return end
 	selectingKey = true
@@ -201,7 +201,7 @@ HotkeyButton.MouseButton1Click:Connect(function()
 	end)
 end)
 
---// Toggle GUI on Hotkey (original)
+-- Toggle GUI on Hotkey (original)
 UserInputService.InputBegan:Connect(function(input, gp)
 	if gp or not currentHotkey then return end
 	if input.KeyCode == currentHotkey and not toggling then
@@ -221,7 +221,7 @@ UserInputService.InputBegan:Connect(function(input, gp)
 	end
 end)
 
---// Tab switching logic
+-- Tab switching logic
 local function showSettingsTab()
 	Title.Text = "⚙ SETTINGS"
 	SettingsInner.Visible = true
@@ -245,35 +245,29 @@ StealTabBtn.MouseButton1Click:Connect(showStealTab)
 Tween(SettingsTabBtn, {BackgroundColor3 = Color3.fromRGB(180,0,0)}, 0.01)
 Tween(StealTabBtn, {BackgroundColor3 = Color3.fromRGB(130,0,0)}, 0.01)
 
---// ---- Steal tab functionality ----
+------ Steal tab functionality ----
 
--- utility: safe get character root
 local function getRoot()
 	local char = player.Character or player.CharacterAdded:Wait()
 	local root = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChild("UpperTorso")
 	return char, root
 end
 
--- Desync: tries to apply small randomized offsets each heartbeat to attempt "desync-like" motion for the local character.
+-- Desync
 DesyncBtn.MouseButton1Click:Connect(function()
 	desyncEnabled = not desyncEnabled
 	DesyncBtn.Text = "Desync (Anti-Hit): " .. (desyncEnabled and "ON" or "OFF")
 	if desyncEnabled then
-		-- start heartbeat modifier
 		desyncConnection = RunService.Heartbeat:Connect(function(dt)
 			local ok, root = pcall(getRoot)
 			if not ok or not root then return end
 			local _, r = getRoot()
 			if r and r:IsA("BasePart") then
-				-- small random jitter in position (non-destructive)
-				local nx = (math.random() - 0.5) * 0.06 -- +/-0.03 studs
+				local nx = (math.random() - 0.5) * 0.06
 				local nz = (math.random() - 0.5) * 0.06
 				local offset = Vector3.new(nx, 0, nz)
-				-- apply CFrame change using CFrame + offset to minimize physics disruption
-				local currentCFrame = r.CFrame
-				-- pcall just in case
 				pcall(function()
-					r.CFrame = currentCFrame + offset
+					r.CFrame = r.CFrame + offset
 				end)
 			end
 		end)
@@ -285,45 +279,22 @@ DesyncBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
--- Teleport to Base: tries to find a "base" part belonging to the player and teleport them there.
+-- Teleport to **your own base** only
 TeleportBaseBtn.MouseButton1Click:Connect(function()
 	local char, root = getRoot()
 	if not root then return end
-	-- search heuristics for base parts
 	local found = nil
-	for _, obj in ipairs(workspace:GetDescendants()) do
-		if obj:IsA("BasePart") then
-			local lname = tostring(obj.Name):lower()
-			-- common possible base names or presence of player's name in parent
-			if lname:find("base") or lname:find("home") or lname:find("spawn") or lname:find("house") then
-				-- check ownership by proximity to player's name or attribute
-				if tostring(obj.Parent):lower():find(player.Name:lower()) or tostring(obj.Name):lower():find(player.Name:lower()) then
-					found = obj
-					break
-				end
-				-- fallback: if the part is near player's existing character (e.g., same area)
-				-- (we don't assume exact structure; check later)
-				if found == nil and (obj.Position - (root.Position)).magnitude < 50 then
-					found = obj
-				end
-			end
+
+	-- look for a folder with player's name
+	local basesFolder = workspace:FindFirstChild("Bases") or workspace:FindFirstChild("PlayerBases")
+	if basesFolder then
+		found = basesFolder:FindFirstChild(player.Name)
+		if found and found:IsA("Model") then
+			found = found.PrimaryPart or found:FindFirstChildWhichIsA("BasePart")
 		end
 	end
 
-	-- additional fallback: look for a folder named "Bases" or "PlayerBases"
-	if not found then
-		local folder = workspace:FindFirstChild("Bases") or workspace:FindFirstChild("PlayerBases") or workspace:FindFirstChild("BaseParts")
-		if folder then
-			for _, v in ipairs(folder:GetDescendants()) do
-				if v:IsA("BasePart") and (tostring(v.Name):lower():find(player.Name:lower()) or tostring(v.Parent):lower():find(player.Name:lower())) then
-					found = v
-					break
-				end
-			end
-		end
-	end
-
-	-- final fallback: try to find a part that explicitly includes the player's name
+	-- fallback: find part with player's name
 	if not found then
 		for _, obj in ipairs(workspace:GetDescendants()) do
 			if obj:IsA("BasePart") and tostring(obj.Name):lower():find(player.Name:lower()) then
@@ -338,22 +309,11 @@ TeleportBaseBtn.MouseButton1Click:Connect(function()
 			root.CFrame = found.CFrame + Vector3.new(0, 4, 0)
 		end)
 	else
-		-- nothing found; try to teleport to a likely "base" by looking for a part with "flag" or "bed" keywords
-		for _, obj in ipairs(workspace:GetDescendants()) do
-			if obj:IsA("BasePart") then
-				local n = tostring(obj.Name):lower()
-				if n:find("flag") or n:find("bed") or n:find("base") then
-					pcall(function()
-						root.CFrame = obj.CFrame + Vector3.new(0, 4, 0)
-					end)
-					return
-				end
-			end
-		end
+		warn("No personal base found for player!")
 	end
 end)
 
--- Find Brainrots: scans workspace for objects likely named "Brainrot" and highlights them with a BillboardGui
+-- Find Brainrots
 local function clearHighlights()
 	for _, g in ipairs(highlightedBrainrots) do
 		if g and g.Parent then pcall(function() g:Destroy() end) end
@@ -368,7 +328,6 @@ FindBrainrotsBtn.MouseButton1Click:Connect(function()
 		if obj:IsA("BasePart") then
 			local n = tostring(obj.Name):lower()
 			if n:find("brainrot") or n:find("brain") or n:find("rot") then
-				-- create a BillboardGui
 				local bill = Instance.new("BillboardGui")
 				bill.Adornee = obj
 				bill.Size = UDim2.new(0, 120, 0, 28)
@@ -391,39 +350,9 @@ FindBrainrotsBtn.MouseButton1Click:Connect(function()
 			end
 		end
 	end
-
-	if foundAny == 0 then
-		-- fallback: look for models or tools named similarly
-		for _, obj in ipairs(workspace:GetDescendants()) do
-			if obj:IsA("Model") and (tostring(obj.Name):lower():find("brainrot") or tostring(obj.Name):lower():find("brain")) then
-				-- highlight the primary part if present
-				local p = obj.PrimaryPart or obj:FindFirstChildWhichIsA("BasePart")
-				if p then
-					local bill = Instance.new("BillboardGui")
-					bill.Adornee = p
-					bill.Size = UDim2.new(0, 120, 0, 28)
-					bill.StudsOffset = Vector3.new(0, 2, 0)
-					bill.AlwaysOnTop = true
-					bill.Parent = ScreenGui
-
-					local label = Instance.new("TextLabel", bill)
-					label.Size = UDim2.new(1, 0, 1, 0)
-					label.BackgroundTransparency = 0.5
-					label.BackgroundColor3 = Color3.fromRGB(30,0,0)
-					label.TextColor3 = Color3.fromRGB(255,255,255)
-					label.TextStrokeTransparency = 0.8
-					label.Font = Enum.Font.GothamBold
-					label.TextSize = 14
-					label.Text = "Brainrot"
-					table.insert(highlightedBrainrots, bill)
-					foundAny = foundAny + 1
-				end
-			end
-		end
-	end
 end)
 
--- Auto-Steal: move to nearest brainrot and attempt to "touch" it repeatedly until taken
+-- Auto-Steal
 local function findBrainrotParts()
 	local list = {}
 	for _, obj in ipairs(workspace:GetDescendants()) do
@@ -464,13 +393,10 @@ AutoStealBtn.MouseButton1Click:Connect(function()
 			if #list == 0 then return end
 			local target, dist = nearestPartFromRoot(root, list)
 			if target and target.Parent then
-				-- try to move player near the target gently
 				pcall(function()
-					-- position slightly above the item to "touch" it
 					root.CFrame = target.CFrame + Vector3.new(0, 3, 0)
 				end)
 			end
-			-- small wait to avoid locking too tight
 			task.wait(0.25)
 		end)
 	else
@@ -490,7 +416,7 @@ ScreenGui.AncestryChanged:Connect(function(_, parent)
 	end
 end)
 
---// Opening Animation (original)
+-- Opening Animation
 task.wait(0.5)
 MainFrame.Visible = true
 MainFrame.BackgroundTransparency = 1
